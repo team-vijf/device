@@ -2,25 +2,22 @@
 #include <ESP8266WiFi.h>
 #include <ArduinoJson.h>
 
-
-extern "C" {
-#include "user_interface.h"
-#include "wpa2_enterprise.h"
-}
-
+#ifndef STASSID
+#define STASSID "hbo-ict-lab-2.4GHz"
+#define STAPSK  "hboictlab2018"
+#endif
 
 const int analog_pin = A0;
 const int motion_pin = D7;
 
-static const char* ssid = "eduroam";
-static const char* username     = "";
-static const char* password = "";
+const char* ssid     = STASSID;
+const char* password = STAPSK;
 
 const String host = "http://api.arjen.io/";
 
 String device_type = "device";
-String shared_secret = "";
-String token = "";
+String shared_secret = "secret";
+String token = "default";
 
 int last_config_time;
 
@@ -40,24 +37,9 @@ void connect_to_wifi(const char* ssid, const char* password) {
   Serial.print("\nConnecting to ");
   Serial.println(ssid);
 
-  // WPA2 Connection starts here
-  // Setting ESP into STATION mode only (no AP mode or dual mode)
-  wifi_set_opmode(STATION_MODE);
-  struct station_config wifi_config;
-  memset(&wifi_config, 0, sizeof(wifi_config));
-  strcpy((char*)wifi_config.ssid, ssid);
-  wifi_station_set_config(&wifi_config);
-  wifi_station_clear_cert_key();
-  wifi_station_clear_enterprise_ca_cert();
-  wifi_station_set_wpa2_enterprise_auth(1);
-  wifi_station_set_enterprise_identity((uint8*)username, strlen(username));
-  wifi_station_set_enterprise_username((uint8*)username, strlen(username));
-  wifi_station_set_enterprise_password((uint8*)password, strlen(password));
-  wifi_station_connect();
-  // WPA2 Connection ends here
+  WiFi.mode(WIFI_STA); //Set ESP in WiFi-client mode
+  WiFi.begin(ssid, password); //Connect to WAP with SSID and password
 
-  Serial.println();
-  Serial.println("Waiting for connection and IP Address from DHCP");
   while (WiFi.status() != WL_CONNECTED) {
     delay(500);
     Serial.print(".");
@@ -70,12 +52,12 @@ void connect_to_wifi(const char* ssid, const char* password) {
 }
 
 /**
-   Generates an API access token
-
-   @param host - API location
-   @param uid - unique identifier (usually MAC-address)
-   @param shared_secret - secret code to generate a private API token
-   @param type - type of device to generate a token for ("device" or "app")
+ * Generates an API access token
+ * 
+ * @param host - API location
+ * @param uid - unique identifier (usually MAC-address)
+ * @param shared_secret - secret code to generate a private API token
+ * @param type - type of device to generate a token for ("device" or "app")
 */
 const char* generate_token(String host, String uid, String shared_secret, String device_type) {
   String endpoint = host + "access/private";
@@ -105,11 +87,11 @@ StaticJsonDocument<200> get_config(String host) {
   if (rp.http_code == 200) {
     deserializeJson(device_config, rp.body);
     last_config_time = millis();
-
+    
     Serial.println("Retrieving Config File: ");
     serializeJsonPretty(device_config, Serial);
     Serial.println("");
-
+    
     return device_config;
   } else {
     Serial.println("HTTP Code: " + String(rp.http_code));
@@ -166,9 +148,9 @@ ReturnPayload send_post_request(String host, String token, StaticJsonDocument<20
 
   Serial.print("Host: ");
   Serial.println(host); // See what we're using as host
-
+  
   Serial.print("Post payload: ");
-  Serial.println(output); // See what we're using as payload
+  Serial.println(output); // See what we're using as payload  
 
   int return_http_code = http.POST(output); // Send the POST request with JSON as a String and save the return HTTP code
   String return_payload = http.getString(); // Save the return payload of the POST request
@@ -226,7 +208,7 @@ void setup() {
     */
     if (token == "default") {
       Serial.print("Generating new API token..-> ");
-      token = generate_token(host, get_mac_address(), shared_secret, "device");
+      token = generate_token(host,get_mac_address(), shared_secret, "device");
       Serial.println(token);
     }
 
@@ -250,7 +232,7 @@ void loop() {
     */
     JsonObject config_object = device_config["config"];
     JsonVariant location = config_object.getMember("location");
-
+    
     while (location.as<String>() == "null") {
       Serial.println("Device must have location assigned");
       Serial.println("Retrying in 5 seconds");
